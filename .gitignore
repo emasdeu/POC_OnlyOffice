@@ -33,8 +33,10 @@ kubeconfig
 .kubeconfig
 
 # Testing
-test_files/*.pdf
-test_files/*.docx
+# Note: test_files/ directory is committed for healthcheck script
+# Uncomment below to exclude test files if needed
+# test_files/*.pdf
+# test_files/*.docx
 *.test
 
 # Logs
