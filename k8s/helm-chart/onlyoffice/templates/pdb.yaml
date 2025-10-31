@@ -1,0 +1,16 @@
+{{- /*
+PodDisruptionBudget for OnlyOffice Document Server high availability
+*/ -}}
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "onlyoffice-documentserver.fullname" . }}
+  labels:
+    {{- include "onlyoffice-documentserver.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "onlyoffice-documentserver.selectorLabels" . | nindent 6 }}
+{{- end }}

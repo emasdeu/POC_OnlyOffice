@@ -1,0 +1,198 @@
+{{- /*
+OnlyOffice Document Server Deployment Template
+*/ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "onlyoffice-documentserver.fullname" . }}
+  labels:
+    {{- include "onlyoffice-documentserver.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "onlyoffice-documentserver.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "onlyoffice-documentserver.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.podConfig.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "onlyoffice-documentserver.serviceAccountName" . }}
+      
+      initContainers:
+      - name: wait-for-db
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nc -z {{ include "onlyoffice-documentserver.database.host" . }} {{ include "onlyoffice-documentserver.database.port" . }}; do echo waiting for db; sleep 2; done;']
+      
+      {{- if .Values.rabbitmq.enabled }}
+      - name: wait-for-rabbitmq
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nc -z {{ include "onlyoffice-documentserver.rabbitmq.host" . }} {{ include "onlyoffice-documentserver.rabbitmq.port" . }}; do echo waiting for rabbitmq; sleep 2; done;']
+      {{- end }}
+
+      containers:
+      {{- if .Values.fileServer.enabled }}
+      - name: file-server
+        image: "{{ .Values.fileServer.image.repository }}:{{ .Values.fileServer.image.tag }}"
+        imagePullPolicy: {{ .Values.fileServer.image.pullPolicy }}
+        ports:
+        - name: files
+          containerPort: {{ .Values.fileServer.port }}
+          protocol: TCP
+        
+        env:
+        - name: STORAGE_PATH
+          value: {{ .Values.fileServer.storagePath }}
+        - name: LISTEN_PORT
+          value: {{ .Values.fileServer.port | quote }}
+        - name: FILE_URL_PREFIX
+          value: "http://127.0.0.1:{{ .Values.fileServer.port }}"
+        
+        # Run Python file server from ConfigMap
+        command:
+          - python3
+          - /scripts/fileserver.py
+        
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: files
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: files
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 2
+
+        {{- with .Values.fileServer.resources }}
+        resources:
+          {{- toYaml . | nindent 12 }}
+        {{- end }}
+
+        volumeMounts:
+        - name: storage
+          mountPath: {{ .Values.fileServer.storagePath }}
+        - name: fileserver-scripts
+          mountPath: /scripts
+      {{- end }}
+      
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        
+        env:
+        {{- range $key, $value := .Values.env }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
+        
+        # Database credentials
+        - name: DB_HOST
+          value: {{ include "onlyoffice-documentserver.database.host" . }}
+        - name: DB_PORT
+          value: {{ include "onlyoffice-documentserver.database.port" . | quote }}
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "onlyoffice-documentserver.fullname" . }}-db
+              key: database
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "onlyoffice-documentserver.fullname" . }}-db
+              key: username
+        - name: DB_PWD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "onlyoffice-documentserver.fullname" . }}-db
+              key: password
+        
+        # RabbitMQ credentials
+        - name: AMQP_URI
+          value: "amqp://{{ include "onlyoffice-documentserver.rabbitmq.username" . }}:{{ include "onlyoffice-documentserver.rabbitmq.password" . }}@{{ include "onlyoffice-documentserver.rabbitmq.host" . }}:{{ include "onlyoffice-documentserver.rabbitmq.port" . }}"
+        
+        livenessProbe:
+          httpGet:
+            path: /healthcheck
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 5
+        
+        readinessProbe:
+          httpGet:
+            path: /healthcheck
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 5
+
+        {{- with .Values.podConfig.resources }}
+        resources:
+          {{- toYaml . | nindent 12 }}
+        {{- end }}
+
+        volumeMounts:
+        - name: data
+          mountPath: /var/www/onlyoffice/Data
+        - name: cache
+          mountPath: /var/lib/onlyoffice
+        {{- if .Values.fileServer.enabled }}
+        - name: storage
+          mountPath: {{ .Values.fileServer.storagePath }}
+        {{- end }}
+        {{- if .Values.configMap.enabled }}
+        - name: config
+          mountPath: /etc/onlyoffice
+        {{- end }}
+
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ include "onlyoffice-documentserver.fullname" . }}-pvc
+      - name: cache
+        emptyDir: {}
+      {{- if .Values.fileServer.enabled }}
+      - name: storage
+        persistentVolumeClaim:
+          claimName: {{ include "onlyoffice-documentserver.fullname" . }}-files-pvc
+      - name: fileserver-scripts
+        configMap:
+          name: {{ include "onlyoffice-documentserver.fullname" . }}-fileserver
+          defaultMode: 0755
+      {{- end }}
+      {{- if .Values.configMap.enabled }}
+      - name: config
+        configMap:
+          name: {{ include "onlyoffice-documentserver.fullname" . }}-config
+      {{- end }}
+
+      {{- with .Values.podConfig.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podConfig.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,192 @@
+{{- /*
+ConfigMap for the file server upload handler script
+*/ -}}
+{{- if .Values.fileServer.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "onlyoffice-documentserver.fullname" . }}-fileserver
+  labels:
+    {{- include "onlyoffice-documentserver.labels" . | nindent 4 }}
+data:
+  fileserver.py: |
+    #!/usr/bin/env python3
+    import http.server
+    import socketserver
+    import os
+    import sys
+    from urllib.parse import urlparse
+    import json
+    import urllib.parse
+    
+    STORAGE_PATH = os.environ.get('STORAGE_PATH', '/var/lib/onlyoffice-storage')
+    PORT = int(os.environ.get('LISTEN_PORT', 8000))
+    FILE_URL_PREFIX = os.environ.get('FILE_URL_PREFIX', 'http://127.0.0.1:9000')
+    LOG_FILE = '/tmp/fileserver.log'
+    
+    def log_msg(msg):
+        """Log message to file and stderr"""
+        timestamp = __import__('datetime').datetime.now().isoformat()
+        log_line = f"[{timestamp}] {msg}\n"
+        try:
+            with open(LOG_FILE, 'a') as f:
+                f.write(log_line)
+        except:
+            pass
+        sys.stderr.write(log_line)
+        sys.stderr.flush()
+    
+    class FileServerHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            # Serve files from storage directory or health check
+            if self.path == '/health':
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'{"status":"healthy"}')
+                return
+            
+            # Parse path and prevent directory traversal
+            path = urlparse(self.path).path.lstrip('/')
+            if '..' in path or path.startswith('/'):
+                self.send_response(400)
+                self.end_headers()
+                return
+            
+            filepath = os.path.join(STORAGE_PATH, path)
+            
+            # Ensure file is within storage directory
+            if not os.path.abspath(filepath).startswith(os.path.abspath(STORAGE_PATH)):
+                self.send_response(403)
+                self.end_headers()
+                return
+            
+            if os.path.isfile(filepath):
+                file_size = os.path.getsize(filepath)
+                self.send_response(200)
+                self.send_header('Content-Type', self.get_mime_type(filepath))
+                self.send_header('Content-Length', str(file_size))
+                self.end_headers()
+                with open(filepath, 'rb') as f:
+                    self.wfile.write(f.read())
+            else:
+                self.send_response(404)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'{"error":"File not found"}')
+        
+        def do_POST(self):
+            try:
+                # Parse path and query string
+                parsed = urlparse(self.path)
+                path_part = parsed.path
+                
+                log_msg(f"POST request: path_part={path_part}, full_path={self.path}")
+                
+                if path_part == '/upload':
+                    content_length = int(self.headers.get('Content-Length', 0))
+                    log_msg(f"Content-Length: {content_length}")
+                    
+                    if content_length == 0:
+                        self.send_error(400, 'No content')
+                        return
+                    
+                    # Get filename from query parameter
+                    params = urllib.parse.parse_qs(parsed.query)
+                    filename = params.get('filename', [''])[0] if parsed.query else ''
+                    
+                    log_msg(f"Query params: {params}, filename from query: {filename}")
+                    
+                    # Fallback to header if not in query
+                    if not filename:
+                        filename = self.headers.get('X-Filename', '')
+                        log_msg(f"Using X-Filename header: {filename}")
+                    
+                    if not filename:
+                        self.send_response(400)
+                        self.send_header('Content-Type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(b'{"error":"No filename provided"}')
+                        log_msg("Error: No filename provided")
+                        return
+                    
+                    # Read file data
+                    try:
+                        log_msg(f"Reading {content_length} bytes from request...")
+                        file_data = self.rfile.read(content_length)
+                        log_msg(f"Successfully read {len(file_data)} bytes")
+                    except Exception as e:
+                        log_msg(f"Error reading data: {str(e)}")
+                        self.send_error(400, f'Error reading data: {str(e)}')
+                        return
+                    
+                    if not file_data:
+                        self.send_error(400, 'No file data')
+                        log_msg("Error: No file data")
+                        return
+                    
+                    # Sanitize filename
+                    filename = os.path.basename(filename.replace('\\\\', '/').split('/')[-1])
+                    filepath = os.path.join(STORAGE_PATH, filename)
+                    log_msg(f"Saving file to: {filepath}")
+                    
+                    try:
+                        # Save file
+                        os.makedirs(STORAGE_PATH, exist_ok=True)
+                        with open(filepath, 'wb') as f:
+                            f.write(file_data)
+                        log_msg(f"File saved successfully: {filepath}")
+                    except Exception as e:
+                        log_msg(f"Error saving file: {str(e)}")
+                        self.send_error(500, f'Error saving file: {str(e)}')
+                        return
+                    
+                    # Return file URL - can be accessed from same pod via localhost
+                    file_url = f'{FILE_URL_PREFIX}/{filename}'
+                    response_json = json.dumps({'fileUrl': file_url})
+                    response_bytes = response_json.encode('utf-8')
+                    
+                    log_msg(f"Sending response: {response_json}")
+                    
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(response_bytes)))
+                    self.end_headers()
+                    self.wfile.write(response_bytes)
+                    log_msg("Response sent successfully")
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+                    log_msg(f"404: Unknown path {path_part}")
+            except Exception as e:
+                log_msg(f"Exception in do_POST: {str(e)}")
+                try:
+                    self.send_error(500, f'Server error: {str(e)}')
+                except:
+                    pass
+        
+        def get_mime_type(self, filepath):
+            """Return MIME type for file"""
+            if filepath.endswith('.docx'):
+                return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            elif filepath.endswith('.xlsx'):
+                return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            elif filepath.endswith('.pptx'):
+                return 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+            elif filepath.endswith('.pdf'):
+                return 'application/pdf'
+            elif filepath.endswith('.txt'):
+                return 'text/plain'
+            return 'application/octet-stream'
+    
+    if __name__ == '__main__':
+        os.makedirs(STORAGE_PATH, exist_ok=True)
+        
+        server = socketserver.TCPServer(("", PORT), FileServerHandler)
+        log_msg(f"File server running on port {PORT}, serving {STORAGE_PATH}")
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            log_msg("Shutting down...")
+            server.shutdown()
+{{- end }}

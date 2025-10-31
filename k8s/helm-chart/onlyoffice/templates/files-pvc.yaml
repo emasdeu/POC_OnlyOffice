@@ -1,0 +1,20 @@
+{{- /*
+PersistentVolumeClaim for shared file-server storage
+Allows file-server to upload files and OnlyOffice to access them
+*/ -}}
+{{- if and .Values.fileServer.enabled .Values.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "onlyoffice-documentserver.fullname" . }}-files-pvc
+  labels:
+    {{- include "onlyoffice-documentserver.labels" . | nindent 4 }}
+    app.kubernetes.io/component: file-server
+spec:
+  accessModes:
+    - {{ .Values.persistence.accessMode }}
+  storageClassName: {{ .Values.persistence.storageClassName }}
+  resources:
+    requests:
+      storage: {{ .Values.fileServer.persistence.size | default "5Gi" }}
+{{- end }}

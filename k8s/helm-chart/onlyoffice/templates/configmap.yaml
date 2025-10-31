@@ -1,0 +1,33 @@
+{{- /*
+ConfigMap for OnlyOffice Document Server configuration
+*/ -}}
+{{- if .Values.configMap.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "onlyoffice-documentserver.fullname" . }}-config
+  labels:
+    {{- include "onlyoffice-documentserver.labels" . | nindent 4 }}
+data:
+  # OnlyOffice Document Server configuration with cache expiration settings
+  local.json: |
+    {
+      "services": {
+        "CoAuthoring": {
+          "sql": {
+            "type": "postgres"
+          },
+          "expire": {
+            "files": {{ .Values.configMap.onlyofficeConfig.expire.files }},
+            "filesCron": "{{ .Values.configMap.onlyofficeConfig.expire.filesCron }}"
+          }
+        }
+      },
+      "storage": {
+        "fs": {
+          "urlExpires": {{ .Values.configMap.onlyofficeConfig.storage.urlExpires }}
+        },
+        "urlExpires": {{ .Values.configMap.onlyofficeConfig.storage.urlExpires }}
+      }
+    }
+{{- end }}

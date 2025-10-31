@@ -1,0 +1,22 @@
+{{- /*
+Service for file server sidecar
+Exposes the file server port 9000 for external access
+*/ -}}
+{{- if .Values.fileServer.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "onlyoffice-documentserver.fullname" . }}-fileserver
+  labels:
+    {{- include "onlyoffice-documentserver.labels" . | nindent 4 }}
+    app.kubernetes.io/component: fileserver
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9000
+    targetPort: files
+    protocol: TCP
+    name: files
+  selector:
+    {{- include "onlyoffice-documentserver.selectorLabels" . | nindent 4 }}
+{{- end }}

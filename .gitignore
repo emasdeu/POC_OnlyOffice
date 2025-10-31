@@ -1,0 +1,68 @@
+# Build outputs
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+*.so
+*.dylib
+
+# Dependencies
+node_modules/
+packages/
+*.nupkg
+
+# IDE files
+.vs/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+*.user
+*.suo
+*.sln.docstates
+
+# Environment files
+.env
+.env.local
+local.json
+
+# Kubernetes
+kubeconfig
+.kubeconfig
+
+# Testing
+test_files/*.pdf
+test_files/*.docx
+*.test
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+
+# OS specific
+Thumbs.db
+.AppleDouble
+.LSOverride
+
+# OnlyOffice cache (keep in local, don't commit)
+**/App_Data/cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+venv/
+env/
+
+# Helm
+*.tgz
+/charts/
+/Chart.lock

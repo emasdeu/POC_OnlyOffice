@@ -1,0 +1,22 @@
+apiVersion: v2
+name: onlyoffice-documentserver
+description: OnlyOffice Document Server Helm Chart for Kubernetes deployment with microK8s support
+type: application
+version: 1.0.0
+appVersion: "8.0"
+
+# Chart metadata
+home: https://www.onlyoffice.com
+sources:
+  - https://github.com/ONLYOFFICE/DocumentServer
+maintainers:
+  - name: OnlyOffice
+    email: support@onlyoffice.com
+
+# Keywords for searching
+keywords:
+  - onlyoffice
+  - document-server
+  - document-conversion
+  - kubernetes
+  - microk8s
