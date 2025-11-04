@@ -68,6 +68,47 @@ kubectl describe namespace onlyoffice
 
 ## Helm Chart Deployment
 
+### Chart Structure
+
+The Helm chart (`k8s/helm-chart/onlyoffice/`) includes the following components:
+
+```
+helm-chart/onlyoffice/
+├── Chart.yaml                    # Helm chart metadata
+├── values.yaml                   # Default configuration values
+├── templates/
+│   ├── deployment.yaml           # OnlyOffice + Python File-Server sidecar
+│   ├── service.yaml              # Service definitions
+│   ├── configmap.yaml            # Configuration overrides
+│   ├── fileserver-configmap.yaml # Python file-server script (used, .NET server not included)
+│   ├── pvc.yaml                  # Storage configuration
+│   └── ...
+```
+
+### Components Deployed
+
+1. **OnlyOffice Document Server Container**
+   - Main conversion engine (port 80)
+   - Runs the full OnlyOffice service stack
+   - 2 replicas by default with HPA (2-5 max)
+
+2. **File-Server Sidecar Container** 
+  - Lightweight Python HTTP server (port 9000)
+  - Handles file uploads/downloads for conversions
+  - Shared storage volume with OnlyOffice container
+  - Runs in the same pod as OnlyOffice
+  - **Note:** The .NET OnlyOfficeStorageServer project is NOT used. The Python file-server is the only supported and deployed file-server in this setup.
+
+3. **PostgreSQL** (External)
+   - Database for document coordination
+   - Located in `local-hcm-system` namespace
+   - Shared cluster resource
+
+4. **Storage Volume**
+   - Shared PersistentVolumeClaim (50Gi)
+   - Mounts at `/var/lib/onlyoffice-storage`
+   - Persists across pod restarts
+
 ### Install Helm Chart
 
 ```powershell
@@ -137,6 +178,9 @@ kubectl logs -n onlyoffice <pod-name>
 # View specific container logs
 kubectl logs -n onlyoffice <pod-name> -c onlyoffice
 
+# View file-server sidecar logs
+kubectl logs -n onlyoffice <pod-name> -c file-server
+
 # Follow logs (tail -f)
 kubectl logs -n onlyoffice <pod-name> -f
 ```
@@ -205,6 +249,169 @@ helm install onlyoffice ./helm-chart/onlyoffice \
 # Get external IP
 kubectl get svc -n onlyoffice
 ```
+
+## File-Server Sidecar Configuration
+
+The File-Server is a lightweight Python HTTP server that runs as a **sidecar container** in the OnlyOffice pod. It handles file uploads and downloads for the document conversion process.
+
+**Note:** The .NET OnlyOfficeStorageServer project is not included or required. All file upload/download operations are handled by the Python file-server sidecar defined in the Helm chart.
+
+### Why File-Server?
+
+- **Local file access**: OnlyOffice needs to access files for conversion
+- **Sidecar pattern**: Runs in the same pod, shares storage volume
+- **HTTP interface**: Simple REST API for file operations
+- **Minimal overhead**: Lightweight Python server using ~128Mi memory
+
+### File-Server Architecture
+
+```
+┌─────────────────────────────────────────┐
+│       OnlyOffice Pod                    │
+├─────────────────────────────────────────┤
+│  ┌─────────────────────────────────┐   │
+│  │  OnlyOffice Container           │   │
+│  │  - Port 80 (HTTP API)           │   │
+│  │  - Conversion engine            │   │
+│  │  - Reads from /storage          │   │
+│  └─────────────────────────────────┘   │
+│                                         │
+│  ┌─────────────────────────────────┐   │
+│  │  File-Server Container          │   │
+│  │  - Port 9000 (HTTP API)         │   │
+│  │  - Upload/Download files        │   │
+│  │  - Same /storage volume         │   │
+│  │  - Lightweight Python server    │   │
+│  └─────────────────────────────────┘   │
+│           ↓                             │
+│  ┌─────────────────────────────────┐   │
+│  │  Shared Volume                  │   │
+│  │  /var/lib/onlyoffice-storage    │   │
+│  │  (50Gi PersistentVolumeClaim)   │   │
+│  └─────────────────────────────────┘   │
+└─────────────────────────────────────────┘
+```
+
+### File-Server Endpoints
+
+```powershell
+# Health check
+GET /health
+Response: 200 OK
+
+# Upload file (from console app)
+POST /upload?filename=document.pdf
+Content-Type: application/octet-stream
+Body: <binary file content>
+
+Response: 
+{
+  "status": "success",
+  "filename": "document.pdf",
+  "url": "http://127.0.0.1:9000/document.pdf"
+}
+
+# Download file (from OnlyOffice after conversion)
+GET /document.docx
+Response: 200 OK with file content
+```
+
+### File-Server Configuration (values.yaml)
+
+```yaml
+fileServer:
+  enabled: true              # Enable/disable sidecar
+  image:
+    repository: python       # Python base image
+    tag: "3.11-slim"        # Lightweight Python version
+    pullPolicy: IfNotPresent
+  port: 9000                # Container port
+  storagePath: "/var/lib/onlyoffice-storage"  # Mount point
+  persistence:
+    size: "5Gi"             # Storage for sidecar
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+```
+
+### File-Server Port Forwarding
+
+```powershell
+# In one terminal, forward file-server port
+kubectl port-forward -n onlyoffice svc/onlyoffice-onlyoffice-documentserver-fileserver 9000:9000
+
+# Verify file-server is accessible
+curl http://localhost:9000/health
+
+# Expected response: 200 OK
+```
+
+### Monitoring File-Server
+
+```powershell
+# View file-server logs
+kubectl logs -n onlyoffice <pod-name> -c file-server -f
+
+# Check file-server container status
+kubectl get pods -n onlyoffice -o jsonpath='{.items[*].status.containerStatuses[?(@.name=="file-server")]}'
+
+# Verify files are being stored
+kubectl exec -n onlyoffice <pod-name> -c file-server -- ls -la /var/lib/onlyoffice-storage
+
+# Check storage usage
+kubectl exec -n onlyoffice <pod-name> -c file-server -- du -sh /var/lib/onlyoffice-storage
+```
+
+### Troubleshooting File-Server
+
+```powershell
+# File-server container not starting?
+kubectl describe pod -n onlyoffice <pod-name> -c file-server
+
+# Connection refused on port 9000?
+# 1. Verify port-forward is active
+kubectl port-forward -n onlyoffice svc/onlyoffice-onlyoffice-documentserver-fileserver 9000:9000 -v 3
+
+# 2. Check if service exists
+kubectl get svc -n onlyoffice | grep fileserver
+
+# 3. Verify service endpoints
+kubectl get endpoints -n onlyoffice onlyoffice-onlyoffice-documentserver-fileserver
+
+# 4. Test from inside pod
+kubectl exec -n onlyoffice <pod-name> -- curl http://localhost:9000/health
+
+# File upload failing?
+# Check file-server logs
+kubectl logs -n onlyoffice <pod-name> -c file-server --tail=50
+
+# Storage full?
+kubectl exec -n onlyoffice <pod-name> -c file-server -- df -h /var/lib/onlyoffice-storage
+```
+
+### File-Server Script
+
+The file-server script is managed via ConfigMap and deployed at `/scripts/fileserver.py`. It provides:
+
+```python
+# Health check endpoint
+@app.route('/health', methods=['GET'])
+
+# File upload endpoint  
+@app.route('/upload', methods=['POST'])
+
+# File download endpoint
+@app.route('/<filename>', methods=['GET'])
+
+# List files endpoint (optional)
+@app.route('/', methods=['GET'])
+```
+
+For details, see: `k8s/helm-chart/onlyoffice/templates/fileserver-configmap.yaml`
 
 ## Storage Configuration
 
