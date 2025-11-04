@@ -6,102 +6,25 @@ Complete instructions for deploying OnlyOffice Document Server to Kubernetes usi
 
 ### Required Software
 
-```powershell
-# Check versions
-microk8s version
-helm version
-kubectl version
-dotnet --version
-```
+Ensure the following tools are installed and configured:
 
-**Minimum versions**:
-- microK8s: 1.20+
-- Helm: 3.0+
-- kubectl: 1.20+
-- .NET SDK: 8.0
+- **microK8s** (1.20+)
+- **Helm** (3.0+)
+- **kubectl** (1.20+)
+- **.NET 8 SDK**
 
-### Installation
+### Installation Guide
 
-#### 1. Install microK8s (Windows)
+For detailed instructions on installing and configuring a local microK8s environment on Windows, refer to:
 
-```powershell
-# Using Chocolatey
-choco install microk8s
+📚 **[Entorno local en K8s MicroK8s](https://confluence.wolterskluwer.io/spaces/TAASDO/pages/696502704/Entorno+local+en+K8s+Microk8s)**
 
-# Or download from https://microk8s.io/
-# Follow official installation guide for Windows
-
-# Verify installation
-microk8s status
-```
-
-#### 2. Install Helm (Windows)
-
-```powershell
-# Using Chocolatey
-choco install kubernetes-helm
-
-# Or using direct download
-# https://github.com/helm/helm/releases
-
-# Verify installation
-helm version
-```
-
-#### 3. Install kubectl (Windows)
-
-Usually included with microk8s, but verify:
-
-```powershell
-# Check if installed
-kubectl version
-
-# If not, install with Chocolatey
-choco install kubernetes-cli
-```
-
-#### 4. Install .NET 8 SDK (Windows)
-
-```powershell
-# From https://dotnet.microsoft.com/en-us/download/dotnet/8.0
-# Download and run the installer
-
-# Verify installation
-dotnet --version
-```
-
-## Environment Setup
-
-### Start microK8s
-
-```powershell
-# Start microK8s service
-microk8s start
-
-# Wait for ready status
-microk8s status --wait-ready
-
-# Expected output:
-# ✓ Kubernetes is running
-# ✓ containerd is running
-# ...
-```
-
-### Enable Required Add-ons
-
-```powershell
-# Enable storage for PersistentVolumes
-microk8s enable storage
-
-# Enable DNS
-microk8s enable dns
-
-# Enable ingress (optional, for production)
-microk8s enable ingress
-
-# Verify add-ons
-microk8s status
-```
+This guide covers:
+- microK8s installation and setup
+- Helm installation and configuration
+- kubectl configuration
+- Storage and add-ons enablement
+- Troubleshooting common setup issues
 
 ### Configure kubectl Context
 
@@ -143,56 +66,13 @@ kubectl describe namespace onlyoffice
 # Status:       Active
 ```
 
-## Secrets & Configuration
-
-### Create JWT Secret
-
-```powershell
-# Create secret for JWT authentication
-kubectl create secret generic jwt-secret-onlyoffice `
-  --from-literal=secret="your-jwt-secret-key-change-me" `
-  -n onlyoffice
-
-# Verify secret
-kubectl get secret jwt-secret-onlyoffice -n onlyoffice
-kubectl describe secret jwt-secret-onlyoffice -n onlyoffice
-```
-
-⚠️ **Security Note**: Change the default secret value for production!
-
-### Create Database Credentials
-
-```powershell
-# Create secret for PostgreSQL
-kubectl create secret generic onlyoffice-db-credentials `
-  --from-literal=username=onlyoffice_user `
-  --from-literal=password=OnlyOffice_SecurePassword_123 `
-  -n onlyoffice
-
-# Verify secret
-kubectl get secret onlyoffice-db-credentials -n onlyoffice
-```
-
 ## Helm Chart Deployment
-
-### Navigate to Helm Chart
-
-```powershell
-# From project root directory
-cd c:\WK_SourceCode\POC_OnlyOffice
-
-# Verify chart structure
-ls helm-chart\onlyoffice\
-
-# Should show:
-# Chart.yaml, values.yaml, templates/, ...
-```
 
 ### Install Helm Chart
 
 ```powershell
 # Basic installation with default values
-helm install onlyoffice ./helm-chart/onlyoffice `
+helm install onlyoffice ./k8s/helm-chart/onlyoffice `
   -n onlyoffice `
   --create-namespace
 
