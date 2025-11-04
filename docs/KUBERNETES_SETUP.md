@@ -6,102 +6,25 @@ Complete instructions for deploying OnlyOffice Document Server to Kubernetes usi
 
 ### Required Software
 
-```powershell
-# Check versions
-microk8s version
-helm version
-kubectl version
-dotnet --version
-```
+Ensure the following tools are installed and configured:
 
-**Minimum versions**:
-- microK8s: 1.20+
-- Helm: 3.0+
-- kubectl: 1.20+
-- .NET SDK: 8.0
+- **microK8s** (1.20+)
+- **Helm** (3.0+)
+- **kubectl** (1.20+)
+- **.NET 8 SDK**
 
-### Installation
+### Installation Guide
 
-#### 1. Install microK8s (Windows)
+For detailed instructions on installing and configuring a local microK8s environment on Windows, refer to:
 
-```powershell
-# Using Chocolatey
-choco install microk8s
+📚 **[Entorno local en K8s MicroK8s](https://confluence.wolterskluwer.io/spaces/TAASDO/pages/696502704/Entorno+local+en+K8s+Microk8s)**
 
-# Or download from https://microk8s.io/
-# Follow official installation guide for Windows
-
-# Verify installation
-microk8s status
-```
-
-#### 2. Install Helm (Windows)
-
-```powershell
-# Using Chocolatey
-choco install kubernetes-helm
-
-# Or using direct download
-# https://github.com/helm/helm/releases
-
-# Verify installation
-helm version
-```
-
-#### 3. Install kubectl (Windows)
-
-Usually included with microk8s, but verify:
-
-```powershell
-# Check if installed
-kubectl version
-
-# If not, install with Chocolatey
-choco install kubernetes-cli
-```
-
-#### 4. Install .NET 8 SDK (Windows)
-
-```powershell
-# From https://dotnet.microsoft.com/en-us/download/dotnet/8.0
-# Download and run the installer
-
-# Verify installation
-dotnet --version
-```
-
-## Environment Setup
-
-### Start microK8s
-
-```powershell
-# Start microK8s service
-microk8s start
-
-# Wait for ready status
-microk8s status --wait-ready
-
-# Expected output:
-# ✓ Kubernetes is running
-# ✓ containerd is running
-# ...
-```
-
-### Enable Required Add-ons
-
-```powershell
-# Enable storage for PersistentVolumes
-microk8s enable storage
-
-# Enable DNS
-microk8s enable dns
-
-# Enable ingress (optional, for production)
-microk8s enable ingress
-
-# Verify add-ons
-microk8s status
-```
+This guide covers:
+- microK8s installation and setup
+- Helm installation and configuration
+- kubectl configuration
+- Storage and add-ons enablement
+- Troubleshooting common setup issues
 
 ### Configure kubectl Context
 
@@ -143,56 +66,54 @@ kubectl describe namespace onlyoffice
 # Status:       Active
 ```
 
-## Secrets & Configuration
-
-### Create JWT Secret
-
-```powershell
-# Create secret for JWT authentication
-kubectl create secret generic jwt-secret-onlyoffice `
-  --from-literal=secret="your-jwt-secret-key-change-me" `
-  -n onlyoffice
-
-# Verify secret
-kubectl get secret jwt-secret-onlyoffice -n onlyoffice
-kubectl describe secret jwt-secret-onlyoffice -n onlyoffice
-```
-
-⚠️ **Security Note**: Change the default secret value for production!
-
-### Create Database Credentials
-
-```powershell
-# Create secret for PostgreSQL
-kubectl create secret generic onlyoffice-db-credentials `
-  --from-literal=username=onlyoffice_user `
-  --from-literal=password=OnlyOffice_SecurePassword_123 `
-  -n onlyoffice
-
-# Verify secret
-kubectl get secret onlyoffice-db-credentials -n onlyoffice
-```
-
 ## Helm Chart Deployment
 
-### Navigate to Helm Chart
+### Chart Structure
 
-```powershell
-# From project root directory
-cd c:\WK_SourceCode\POC_OnlyOffice
+The Helm chart (`k8s/helm-chart/onlyoffice/`) includes the following components:
 
-# Verify chart structure
-ls helm-chart\onlyoffice\
-
-# Should show:
-# Chart.yaml, values.yaml, templates/, ...
 ```
+helm-chart/onlyoffice/
+├── Chart.yaml                    # Helm chart metadata
+├── values.yaml                   # Default configuration values
+├── templates/
+│   ├── deployment.yaml           # OnlyOffice + Python File-Server sidecar
+│   ├── service.yaml              # Service definitions
+│   ├── configmap.yaml            # Configuration overrides
+│   ├── fileserver-configmap.yaml # Python file-server script (used, .NET server not included)
+│   ├── pvc.yaml                  # Storage configuration
+│   └── ...
+```
+
+### Components Deployed
+
+1. **OnlyOffice Document Server Container**
+   - Main conversion engine (port 80)
+   - Runs the full OnlyOffice service stack
+   - 2 replicas by default with HPA (2-5 max)
+
+2. **File-Server Sidecar Container** 
+  - Lightweight Python HTTP server (port 9000)
+  - Handles file uploads/downloads for conversions
+  - Shared storage volume with OnlyOffice container
+  - Runs in the same pod as OnlyOffice
+  - **Note:** The .NET OnlyOfficeStorageServer project is NOT used. The Python file-server is the only supported and deployed file-server in this setup.
+
+3. **PostgreSQL** (External)
+   - Database for document coordination
+   - Located in `local-hcm-system` namespace
+   - Shared cluster resource
+
+4. **Storage Volume**
+   - Shared PersistentVolumeClaim (50Gi)
+   - Mounts at `/var/lib/onlyoffice-storage`
+   - Persists across pod restarts
 
 ### Install Helm Chart
 
 ```powershell
 # Basic installation with default values
-helm install onlyoffice ./helm-chart/onlyoffice `
+helm install onlyoffice ./k8s/helm-chart/onlyoffice `
   -n onlyoffice `
   --create-namespace
 
@@ -256,6 +177,9 @@ kubectl logs -n onlyoffice <pod-name>
 
 # View specific container logs
 kubectl logs -n onlyoffice <pod-name> -c onlyoffice
+
+# View file-server sidecar logs
+kubectl logs -n onlyoffice <pod-name> -c file-server
 
 # Follow logs (tail -f)
 kubectl logs -n onlyoffice <pod-name> -f
@@ -325,6 +249,169 @@ helm install onlyoffice ./helm-chart/onlyoffice \
 # Get external IP
 kubectl get svc -n onlyoffice
 ```
+
+## File-Server Sidecar Configuration
+
+The File-Server is a lightweight Python HTTP server that runs as a **sidecar container** in the OnlyOffice pod. It handles file uploads and downloads for the document conversion process.
+
+**Note:** The .NET OnlyOfficeStorageServer project is not included or required. All file upload/download operations are handled by the Python file-server sidecar defined in the Helm chart.
+
+### Why File-Server?
+
+- **Local file access**: OnlyOffice needs to access files for conversion
+- **Sidecar pattern**: Runs in the same pod, shares storage volume
+- **HTTP interface**: Simple REST API for file operations
+- **Minimal overhead**: Lightweight Python server using ~128Mi memory
+
+### File-Server Architecture
+
+```
+┌─────────────────────────────────────────┐
+│       OnlyOffice Pod                    │
+├─────────────────────────────────────────┤
+│  ┌─────────────────────────────────┐   │
+│  │  OnlyOffice Container           │   │
+│  │  - Port 80 (HTTP API)           │   │
+│  │  - Conversion engine            │   │
+│  │  - Reads from /storage          │   │
+│  └─────────────────────────────────┘   │
+│                                         │
+│  ┌─────────────────────────────────┐   │
+│  │  File-Server Container          │   │
+│  │  - Port 9000 (HTTP API)         │   │
+│  │  - Upload/Download files        │   │
+│  │  - Same /storage volume         │   │
+│  │  - Lightweight Python server    │   │
+│  └─────────────────────────────────┘   │
+│           ↓                             │
+│  ┌─────────────────────────────────┐   │
+│  │  Shared Volume                  │   │
+│  │  /var/lib/onlyoffice-storage    │   │
+│  │  (50Gi PersistentVolumeClaim)   │   │
+│  └─────────────────────────────────┘   │
+└─────────────────────────────────────────┘
+```
+
+### File-Server Endpoints
+
+```powershell
+# Health check
+GET /health
+Response: 200 OK
+
+# Upload file (from console app)
+POST /upload?filename=document.pdf
+Content-Type: application/octet-stream
+Body: <binary file content>
+
+Response: 
+{
+  "status": "success",
+  "filename": "document.pdf",
+  "url": "http://127.0.0.1:9000/document.pdf"
+}
+
+# Download file (from OnlyOffice after conversion)
+GET /document.docx
+Response: 200 OK with file content
+```
+
+### File-Server Configuration (values.yaml)
+
+```yaml
+fileServer:
+  enabled: true              # Enable/disable sidecar
+  image:
+    repository: python       # Python base image
+    tag: "3.11-slim"        # Lightweight Python version
+    pullPolicy: IfNotPresent
+  port: 9000                # Container port
+  storagePath: "/var/lib/onlyoffice-storage"  # Mount point
+  persistence:
+    size: "5Gi"             # Storage for sidecar
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+```
+
+### File-Server Port Forwarding
+
+```powershell
+# In one terminal, forward file-server port
+kubectl port-forward -n onlyoffice svc/onlyoffice-onlyoffice-documentserver-fileserver 9000:9000
+
+# Verify file-server is accessible
+curl http://localhost:9000/health
+
+# Expected response: 200 OK
+```
+
+### Monitoring File-Server
+
+```powershell
+# View file-server logs
+kubectl logs -n onlyoffice <pod-name> -c file-server -f
+
+# Check file-server container status
+kubectl get pods -n onlyoffice -o jsonpath='{.items[*].status.containerStatuses[?(@.name=="file-server")]}'
+
+# Verify files are being stored
+kubectl exec -n onlyoffice <pod-name> -c file-server -- ls -la /var/lib/onlyoffice-storage
+
+# Check storage usage
+kubectl exec -n onlyoffice <pod-name> -c file-server -- du -sh /var/lib/onlyoffice-storage
+```
+
+### Troubleshooting File-Server
+
+```powershell
+# File-server container not starting?
+kubectl describe pod -n onlyoffice <pod-name> -c file-server
+
+# Connection refused on port 9000?
+# 1. Verify port-forward is active
+kubectl port-forward -n onlyoffice svc/onlyoffice-onlyoffice-documentserver-fileserver 9000:9000 -v 3
+
+# 2. Check if service exists
+kubectl get svc -n onlyoffice | grep fileserver
+
+# 3. Verify service endpoints
+kubectl get endpoints -n onlyoffice onlyoffice-onlyoffice-documentserver-fileserver
+
+# 4. Test from inside pod
+kubectl exec -n onlyoffice <pod-name> -- curl http://localhost:9000/health
+
+# File upload failing?
+# Check file-server logs
+kubectl logs -n onlyoffice <pod-name> -c file-server --tail=50
+
+# Storage full?
+kubectl exec -n onlyoffice <pod-name> -c file-server -- df -h /var/lib/onlyoffice-storage
+```
+
+### File-Server Script
+
+The file-server script is managed via ConfigMap and deployed at `/scripts/fileserver.py`. It provides:
+
+```python
+# Health check endpoint
+@app.route('/health', methods=['GET'])
+
+# File upload endpoint  
+@app.route('/upload', methods=['POST'])
+
+# File download endpoint
+@app.route('/<filename>', methods=['GET'])
+
+# List files endpoint (optional)
+@app.route('/', methods=['GET'])
+```
+
+For details, see: `k8s/helm-chart/onlyoffice/templates/fileserver-configmap.yaml`
 
 ## Storage Configuration
 

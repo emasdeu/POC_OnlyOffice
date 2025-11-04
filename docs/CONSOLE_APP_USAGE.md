@@ -30,14 +30,26 @@ The **OnlyOfficeConsoleApp** is a .NET 8 console application that orchestrates d
 cd c:\WK_SourceCode\POC_OnlyOffice\OnlyOfficeConsoleApp
 ```
 
+# Port-Forwards
+Run these two commands in SEPARATE terminal windows and keep them running:
+
+Terminal 1:
+kubectl port-forward -n onlyoffice svc/onlyoffice-onlyoffice-documentserver 8080:80
+
+Terminal 2:
+kubectl port-forward -n onlyoffice svc/onlyoffice-onlyoffice-documentserver-fileserver 9000:9000
+
+Terminal 3: All next commands
+
+
 ### Build for Development
 
 ```powershell
 # Build in Debug mode
-dotnet build
+dotnet build --project .\OnlyOfficeConsoleApp
 
-# Run directly from source
-dotnet run -- input.docx http://localhost:8080
+# Run directly from source (from root directory)
+dotnet run --project .\OnlyOfficeConsoleApp -- .\test_files\input.docx http://localhost:8080
 ```
 
 ### Build for Release
@@ -47,7 +59,7 @@ dotnet run -- input.docx http://localhost:8080
 dotnet build -c Release
 
 # Run from compiled binary
-.\bin\Release\net8.0\OnlyOfficeConsoleApp.exe input.docx http://localhost:8080
+.\bin\Release\net8.0\OnlyOfficeConsoleApp.exe .\test_files\input.pdf http://localhost:8080
 ```
 
 ### Publish Standalone

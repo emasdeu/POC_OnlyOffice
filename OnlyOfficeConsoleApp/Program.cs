@@ -25,7 +25,10 @@ class Program
             var inputFilePath = args[0];
             var onlyOfficeUrl = args.Length > 1 ? args[1] : config["OnlyOffice:Url"] ?? "http://localhost:8080";
             var jwtSecret = args.Length > 2 ? args[2] : config["OnlyOffice:JwtSecret"] ?? "";
-            var storageServerUrl = args.Length > 3 ? args[3] : config["OnlyOffice:StorageServerUrl"] ?? "http://localhost:8000";
+            
+            // For storage server, use Kubernetes DNS name for better compatibility with port-forwards
+            var defaultStorageUrl = config["OnlyOffice:StorageServerUrl"] ?? "http://onlyoffice-onlyoffice-documentserver-fileserver.onlyoffice.svc.cluster.local:9000";
+            var storageServerUrl = args.Length > 3 ? args[3] : defaultStorageUrl;
 
             // Validate input file exists
             if (!File.Exists(inputFilePath))
