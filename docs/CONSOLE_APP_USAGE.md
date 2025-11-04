@@ -34,10 +34,10 @@ cd c:\WK_SourceCode\POC_OnlyOffice\OnlyOfficeConsoleApp
 Run these two commands in SEPARATE terminal windows and keep them running:
 
 Terminal 1:
-kubectl port-forward svc/onlyoffice-onlyoffice-documentserver-fileserver 9000:9000 -n onlyoffice
+kubectl port-forward -n onlyoffice svc/onlyoffice-onlyoffice-documentserver 8080:80
 
 Terminal 2:
-kubectl port-forward svc/onlyoffice-onlyoffice-documentserver-fileserver 9000:9000 -n onlyoffice
+kubectl port-forward -n onlyoffice svc/onlyoffice-onlyoffice-documentserver-fileserver 9000:9000
 
 Terminal 3: All next commands
 

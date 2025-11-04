@@ -113,7 +113,7 @@ configMap:
       urlExpires: 1800  # 30 minutes - cache expiration for converted files
     expire:
       files: 1800       # 30 minutes - cleanup period for cached files
-      filesCron: "*/30 * * * * *"  # Run cleanup every 30 minutes
+      filesCron: "0 */1 * * * *"  # Run cleanup every 1 hour (after all 30min files expire)
 
 # Secrets
 secrets:
