@@ -15,7 +15,12 @@ data:
       "services": {
         "CoAuthoring": {
           "sql": {
-            "type": "postgres"
+            "type": "postgres",
+            "dbHost": "{{ include "onlyoffice-documentserver.database.host" . }}",
+            "dbPort": "{{ include "onlyoffice-documentserver.database.port" . }}",
+            "dbName": "{{ .Values.postgresql.externalDatabase.database }}",
+            "dbUser": "{{ .Values.postgresql.externalDatabase.username }}",
+            "dbPass": "{{ .Values.postgresql.externalDatabase.password }}"
           },
           "expire": {
             "files": {{ .Values.configMap.onlyofficeConfig.expire.files }},
@@ -28,6 +33,9 @@ data:
           "urlExpires": {{ .Values.configMap.onlyofficeConfig.storage.urlExpires }}
         },
         "urlExpires": {{ .Values.configMap.onlyofficeConfig.storage.urlExpires }}
+      },
+      "rabbitmq": {
+        "url": "amqp://{{ include "onlyoffice-documentserver.rabbitmq.username" . }}:{{ include "onlyoffice-documentserver.rabbitmq.password" . }}@{{ include "onlyoffice-documentserver.rabbitmq.host" . }}:{{ include "onlyoffice-documentserver.rabbitmq.port" . }}"
       }
     }
 {{- end }}

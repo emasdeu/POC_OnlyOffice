@@ -164,7 +164,8 @@ spec:
         {{- end }}
         {{- if .Values.configMap.enabled }}
         - name: config
-          mountPath: /etc/onlyoffice
+          mountPath: /etc/onlyoffice/documentserver/local.json
+          subPath: local.json
         {{- end }}
 
       volumes:
