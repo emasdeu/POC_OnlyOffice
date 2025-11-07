@@ -20,6 +20,7 @@ data:
     import urllib.parse
     
     STORAGE_PATH = os.environ.get('STORAGE_PATH', '/var/lib/onlyoffice-storage')
+    CACHE_PATH = '/var/lib/onlyoffice-cache/documentserver/App_Data/cache/files/data'
     PORT = int(os.environ.get('LISTEN_PORT', 8000))
     FILE_URL_PREFIX = os.environ.get('FILE_URL_PREFIX', 'http://127.0.0.1:9000')
     LOG_FILE = '/tmp/fileserver.log'
@@ -53,13 +54,26 @@ data:
                 self.end_headers()
                 return
             
-            filepath = os.path.join(STORAGE_PATH, path)
-            
-            # Ensure file is within storage directory
-            if not os.path.abspath(filepath).startswith(os.path.abspath(STORAGE_PATH)):
-                self.send_response(403)
-                self.end_headers()
-                return
+            # Check if it's a cache file request (starts with 'cache/')
+            if path.startswith('cache/'):
+                # Serve from OnlyOffice cache directory
+                cache_relative_path = path[6:]  # Remove 'cache/' prefix
+                filepath = os.path.join(CACHE_PATH, cache_relative_path)
+                
+                # Ensure file is within cache directory
+                if not os.path.abspath(filepath).startswith(os.path.abspath(CACHE_PATH)):
+                    self.send_response(403)
+                    self.end_headers()
+                    return
+            else:
+                # Serve from storage directory
+                filepath = os.path.join(STORAGE_PATH, path)
+                
+                # Ensure file is within storage directory
+                if not os.path.abspath(filepath).startswith(os.path.abspath(STORAGE_PATH)):
+                    self.send_response(403)
+                    self.end_headers()
+                    return
             
             if os.path.isfile(filepath):
                 file_size = os.path.getsize(filepath)

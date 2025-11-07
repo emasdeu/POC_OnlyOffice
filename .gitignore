@@ -68,3 +68,6 @@ env/
 *.tgz
 /charts/
 /Chart.lock
+
+# Test files
+test_files/

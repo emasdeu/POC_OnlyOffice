@@ -116,9 +116,84 @@ public class OnlyOfficeConverter
             // Step 5: Download converted file
             if (!string.IsNullOrEmpty(conversionResponse?.FileUrl))
             {
-                Console.WriteLine($"Downloading converted file from: {conversionResponse.FileUrl}");
+                // Translate OnlyOffice cache URL to file-server URL
+                // OnlyOffice returns: http://localhost:8080/cache/files/data/conv_XXX/output.pdf/filename.pdf?md5=...&expires=...
+                // We need: http://localhost:9000/data/conv_XXX/output.pdf
+                var downloadUrl = conversionResponse.FileUrl;
+                var uri = new Uri(downloadUrl);
+                
+                if (uri.AbsolutePath.Contains("/cache/files/data/"))
+                {
+                    // Extract the path: /cache/files/data/conv_XXX/output.pdf (remove /filename.pdf suffix)
+                    var match = System.Text.RegularExpressions.Regex.Match(uri.AbsolutePath, @"/cache/files(/data/[^/]+/output\.\w+)");
+                    if (match.Success)
+                    {
+                        var relativePath = match.Groups[1].Value;
+                        // Remove query parameters and construct file-server URL
+                        downloadUrl = $"{_storageServerUrl}{relativePath}";
+                        Console.WriteLine($"Translated cache URL to file-server URL: {downloadUrl}");
+                    }
+                }
+                
+                Console.WriteLine($"Downloading converted file from: {downloadUrl}");
+                
+                // TEMPORARY WORKAROUND: kubectl cp due to nginx secure_link 403 issue
+                // TODO: Fix nginx secure_link validation or disable it
+                /*
+                // Parse the cache URL to extract the file path
+                // URL format: http://localhost:8080/cache/files/data/conv_XXX_pdf/output.pdf/filename.pdf?md5=...&expires=...
+                var uri = new Uri(conversionResponse.FileUrl);
+                var pathMatch = System.Text.RegularExpressions.Regex.Match(uri.AbsolutePath, @"/cache(/files/data/conv_[^/]+)/output\.pdf");
+                if (pathMatch.Success)
+                {
+                    var cachePath = pathMatch.Groups[1].Value;
+                    var fullPath = $"/var/lib/onlyoffice/documentserver/App_Data/cache{cachePath}/output.pdf";
+                    
+                    Console.WriteLine($"WORKAROUND: Using kubectl cp to retrieve file from pod");
+                    Console.WriteLine($"Pod path: {fullPath}");
+                    
+                    // Use kubectl to copy the file
+                    var tempFile = Path.Combine(Path.GetTempPath(), $"onlyoffice_{Guid.NewGuid()}.pdf");
+                    var kubectlCmd = $"kubectl get pods -n onlyoffice -l app.kubernetes.io/name=onlyoffice-documentserver -o jsonpath='{{.items[0].metadata.name}}'";
+                    var getPodProcess = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "powershell",
+                        Arguments = $"-Command \"{kubectlCmd}\"",
+                        RedirectStandardOutput = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    });
+                    var podName = getPodProcess?.StandardOutput.ReadToEnd().Trim() ?? "";
+                    getPodProcess?.WaitForExit();
+                    
+                    if (!string.IsNullOrEmpty(podName))
+                    {
+                        var copyCmd = $"kubectl cp -c onlyoffice-documentserver onlyoffice/{podName}:{fullPath} {tempFile}";
+                        var copyProcess = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = "powershell",
+                            Arguments = $"-Command \"{copyCmd}\"",
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        });
+                        copyProcess?.WaitForExit();
+                        
+                        if (File.Exists(tempFile))
+                        {
+                            var fileBytes_result = await File.ReadAllBytesAsync(tempFile, cancellationToken);
+                            File.Delete(tempFile);
+                            return fileBytes_result;
+                        }
+                    }
+                }
+                */
+                
+                // The URL already contains md5 and expires parameters for authentication
+                // Just do a simple GET request
                 var fileBytes_result = await _httpClient.GetByteArrayAsync(
-                    conversionResponse.FileUrl,
+                    downloadUrl,
                     cancellationToken
                 );
                 return fileBytes_result;
@@ -213,6 +288,34 @@ public class OnlyOfficeConverter
         var token = $"{signatureInput}.{signature}";
         Console.WriteLine($"Generated JWT token (length: {token.Length})");
         return token;
+    }
+
+    /// <summary>
+    /// Generates a JWT token for downloading the converted file
+    /// </summary>
+    private string GenerateDownloadJwtToken(string fileUrl)
+    {
+        if (string.IsNullOrEmpty(_jwtSecret))
+        {
+            return "";
+        }
+
+        // Create JWT payload with the file URL
+        var payload = new { url = fileUrl };
+        var jsonPayload = JsonSerializer.Serialize(payload);
+        var payloadBytes = Encoding.UTF8.GetBytes(jsonPayload);
+        var headerBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { alg = "HS256", typ = "JWT" }));
+        var secretBytes = Encoding.UTF8.GetBytes(_jwtSecret);
+
+        var header = Convert.ToBase64String(headerBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var payloadB64 = Convert.ToBase64String(payloadBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        var signatureInput = $"{header}.{payloadB64}";
+        using var hmac = new HMACSHA256(secretBytes);
+        var signatureBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes(signatureInput));
+        var signature = Convert.ToBase64String(signatureBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        return $"{signatureInput}.{signature}";
     }
 
     /// <summary>

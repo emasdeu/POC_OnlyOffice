@@ -15,19 +15,33 @@ data:
       "services": {
         "CoAuthoring": {
           "sql": {
-            "type": "postgres"
+            "type": "postgres",
+            "dbHost": "{{ include "onlyoffice-documentserver.database.host" . }}",
+            "dbPort": "{{ include "onlyoffice-documentserver.database.port" . }}",
+            "dbName": "{{ .Values.postgresql.externalDatabase.database }}",
+            "dbUser": "{{ .Values.postgresql.externalDatabase.username }}",
+            "dbPass": "{{ .Values.postgresql.externalDatabase.password }}"
           },
           "expire": {
             "files": {{ .Values.configMap.onlyofficeConfig.expire.files }},
             "filesCron": "{{ .Values.configMap.onlyofficeConfig.expire.filesCron }}"
+          },
+          "request-filtering-agent": {
+            "allowPrivateIPAddress": true,
+            "allowMetaIPAddress": true
           }
         }
       },
       "storage": {
         "fs": {
-          "urlExpires": {{ .Values.configMap.onlyofficeConfig.storage.urlExpires }}
+          "folderPath": "/var/lib/onlyoffice-storage",
+          "urlExpires": {{ .Values.configMap.onlyofficeConfig.storage.urlExpires }},
+          "secretString": "YZzod7XezKhBZRbJHc4C"
         },
         "urlExpires": {{ .Values.configMap.onlyofficeConfig.storage.urlExpires }}
+      },
+      "rabbitmq": {
+        "url": "amqp://{{ include "onlyoffice-documentserver.rabbitmq.username" . }}:{{ include "onlyoffice-documentserver.rabbitmq.password" . }}@{{ include "onlyoffice-documentserver.rabbitmq.host" . }}:{{ include "onlyoffice-documentserver.rabbitmq.port" . }}"
       }
     }
 {{- end }}
