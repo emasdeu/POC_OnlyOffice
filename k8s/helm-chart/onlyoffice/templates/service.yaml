@@ -9,6 +9,10 @@ metadata:
     {{- include "onlyoffice-documentserver.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600
   ports:
     - port: {{ .Values.service.port }}
       targetPort: http

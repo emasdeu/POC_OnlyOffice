@@ -25,12 +25,18 @@ data:
           "expire": {
             "files": {{ .Values.configMap.onlyofficeConfig.expire.files }},
             "filesCron": "{{ .Values.configMap.onlyofficeConfig.expire.filesCron }}"
+          },
+          "request-filtering-agent": {
+            "allowPrivateIPAddress": true,
+            "allowMetaIPAddress": true
           }
         }
       },
       "storage": {
         "fs": {
-          "urlExpires": {{ .Values.configMap.onlyofficeConfig.storage.urlExpires }}
+          "folderPath": "/var/lib/onlyoffice-storage",
+          "urlExpires": {{ .Values.configMap.onlyofficeConfig.storage.urlExpires }},
+          "secretString": "YZzod7XezKhBZRbJHc4C"
         },
         "urlExpires": {{ .Values.configMap.onlyofficeConfig.storage.urlExpires }}
       },

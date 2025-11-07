@@ -23,11 +23,10 @@ POC_OnlyOffice/
 ├── README.md                           # This file
 ├── OnlyOffice_Overview.md              # High-level overview
 │
-├── docs/                               # Documentation folder
+├── docs/Other/                               # Documentation folder
 │   ├── ARCHITECTURE.md                 # System design and components
 │   ├── KUBERNETES_SETUP.md             # K8s deployment guide
 │   ├── CONSOLE_APP_USAGE.md            # CLI application reference
-│   ├── TROUBLESHOOTING.md              # Issues and solutions
 │   ├── CACHE_CONFIGURATION.md          # Cache management guide
 │   ├── CACHE_CONFIGURATION_SUMMARY.md  # Quick cache reference
 │   ├── PDF_TO_DOCX_CONVERSION.md       # Bidirectional conversion guide
@@ -82,46 +81,11 @@ POC_OnlyOffice/
 
 ### 1. Deploy OnlyOffice to Kubernetes
 
-```powershell
-# Navigate to project root
-cd c:\WK_SourceCode\POC_OnlyOffice
+Guide to install OnlyOffice in microk8s local environment:  [1.-KUBERNETES_SETUP.md](./docs/1.-KUBERNETES_SETUP.md)
 
-# Deploy using Helm
-helm install onlyoffice k8s/helm-chart/onlyoffice -n onlyoffice --create-namespace
+### 2. Use Console App for Conversions
 
-# Verify deployment
-kubectl get pods -n onlyoffice
-kubectl get svc -n onlyoffice
-```
-
-### 2. Set Up Port Forwards
-
-```powershell
-# OnlyOffice API (Port 8080)
-kubectl port-forward -n onlyoffice svc/onlyoffice-onlyoffice-documentserver 8080:80 &
-
-# File-Server (Port 9000)
-kubectl port-forward -n onlyoffice svc/onlyoffice-onlyoffice-documentserver-fileserver 9000:9000 &
-```
-
-### 3. Run Healthcheck Test
-
-```powershell
-# Test PDF → DOCX conversion
-.\run-conversion-test.ps1
-
-# Expected output: "=== SUCCESS ==="
-```
-
-### 4. Use Console App for Conversions
-
-```powershell
-# Convert DOCX to PDF
-.\OnlyOfficeConsoleApp\bin\Release\net8.0\OnlyOfficeConsoleApp.exe test_document.docx http://localhost:8080
-
-# Convert PDF to DOCX
-.\OnlyOfficeConsoleApp\bin\Release\net8.0\OnlyOfficeConsoleApp.exe test_pdf_source.pdf http://localhost:8080
-```
+Quick guide to use OnlyOfficeConsoleApp:  [2.-CONSOLE_QUICKGUIDE](./docs/2.-CONSOLE_QUICKGUIDE.md)
 
 ---
 
@@ -195,18 +159,17 @@ kubectl port-forward -n onlyoffice svc/onlyoffice-onlyoffice-documentserver-file
 | Document | Purpose |
 |----------|---------|
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, components, data flow |
-| [KUBERNETES_SETUP.md](docs/KUBERNETES_SETUP.md) | Step-by-step K8s deployment guide |
-| [CONSOLE_APP_USAGE.md](docs/CONSOLE_APP_USAGE.md) | CLI application reference and examples |
-| [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues and solutions |
+| [KUBERNETES_SETUP.md](docs/Other/KUBERNETES_SETUP.md) | Step-by-step K8s deployment guide |
+| [CONSOLE_APP_USAGE.md](docs/Other/CONSOLE_APP_USAGE.md) | CLI application reference and examples |
 
 ### Advanced Topics
 
 | Document | Purpose |
 |----------|---------|
-| [CACHE_CONFIGURATION.md](docs/CACHE_CONFIGURATION.md) | Cache settings and expiration (30 minutes) |
-| [CACHE_CONFIGURATION_SUMMARY.md](docs/CACHE_CONFIGURATION_SUMMARY.md) | Quick cache reference |
-| [PDF_TO_DOCX_CONVERSION.md](docs/PDF_TO_DOCX_CONVERSION.md) | Bidirectional conversion details |
-| [COMPARISON_WITH_OFFICIAL_REPO.md](docs/COMPARISON_WITH_OFFICIAL_REPO.md) | vs Official OnlyOffice repo |
+| [CACHE_CONFIGURATION.md](docs/Other/CACHE_CONFIGURATION.md) | Cache settings and expiration (30 minutes) |
+| [CACHE_CONFIGURATION_SUMMARY.md](docs/Other/CACHE_CONFIGURATION_SUMMARY.md) | Quick cache reference |
+| [PDF_TO_DOCX_CONVERSION.md](docs/Other/PDF_TO_DOCX_CONVERSION.md) | Bidirectional conversion details |
+| [COMPARISON_WITH_OFFICIAL_REPO.md](docs/Other/COMPARISON_WITH_OFFICIAL_REPO.md) | vs Official OnlyOffice repo |
 
 ---
 
@@ -239,7 +202,6 @@ kubectl port-forward -n onlyoffice svc/onlyoffice-onlyoffice-documentserver-file
 
 - **Comprehensive Documentation**
   - Architecture diagrams
-  - Troubleshooting guide with real issues
   - Cache management guide
   - Comparison with official repository
 
@@ -334,7 +296,7 @@ postgresql:
 | PPTX | PDF | ✅ Supported | Not tested |
 | ODP | PDF | ✅ Supported | Not tested |
 
-For full matrix, see [PDF_TO_DOCX_CONVERSION.md](docs/PDF_TO_DOCX_CONVERSION.md)
+For full matrix, see [PDF_TO_DOCX_CONVERSION.md](docs/Other/PDF_TO_DOCX_CONVERSION.md)
 
 ---
 
@@ -384,7 +346,7 @@ helm install onlyoffice k8s/helm-chart/onlyoffice -n onlyoffice --create-namespa
 4. Add Redis for caching
 5. Add monitoring (Prometheus, Grafana)
 
-For migration path, see [COMPARISON_WITH_OFFICIAL_REPO.md](docs/COMPARISON_WITH_OFFICIAL_REPO.md)
+For migration path, see [COMPARISON_WITH_OFFICIAL_REPO.md](docs/Other/COMPARISON_WITH_OFFICIAL_REPO.md)
 
 ---
 
@@ -452,8 +414,6 @@ helm upgrade onlyoffice k8s/helm-chart/onlyoffice -n onlyoffice
 | Conversion fails with 404 | Verify file-server is running: `curl localhost:9000/health` |
 | JWT token invalid | Verify secret key matches in values.yaml |
 
-For detailed troubleshooting, see [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
-
 ---
 
 ## 📖 Additional Resources
@@ -505,17 +465,6 @@ Contributions are welcome! Areas for enhancement:
 - [ ] Add integration tests
 - [ ] Support batch conversions
 - [ ] Add API endpoint wrapper
-
----
-
-## 📞 Support
-
-For issues or questions:
-
-1. Check [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
-2. Review [ARCHITECTURE.md](docs/ARCHITECTURE.md)
-3. Check Kubernetes pod logs
-4. Review OnlyOffice official documentation
 
 ---
 

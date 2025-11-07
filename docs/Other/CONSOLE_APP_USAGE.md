@@ -46,11 +46,28 @@ Terminal 3: All next commands
 
 ```powershell
 # Build in Debug mode
-dotnet build --project .\OnlyOfficeConsoleApp
+dotnet build .\OnlyOfficeConsoleApp
 
 # Run directly from source (from root directory)
-dotnet run --project .\OnlyOfficeConsoleApp -- .\test_files\input.docx http://localhost:8080
+dotnet run --project .\OnlyOfficeConsoleApp -- .\test_files\input_origin_pdf.pdf
 ```
+
+If error like this: 
+  ✗ Error: No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión. (localhost:8080)  
+    Inner error: No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión.
+
+Then check your port-forwards
+Get-NetTCPConnection -LocalPort 8080,9000 -ErrorAction SilentlyContinue | Select-Object LocalPort,State
+
+should return this:
+LocalPort  State
+---------  -----
+     9000 Listen
+     8080 Listen
+     9000 Listen
+     8080 Listen
+
+
 
 ### Build for Release
 
@@ -59,17 +76,7 @@ dotnet run --project .\OnlyOfficeConsoleApp -- .\test_files\input.docx http://lo
 dotnet build -c Release
 
 # Run from compiled binary
-.\bin\Release\net8.0\OnlyOfficeConsoleApp.exe .\test_files\input.pdf http://localhost:8080
-```
-
-### Publish Standalone
-
-```powershell
-# Publish as self-contained executable (no .NET runtime required)
-dotnet publish -c Release -r win-x64 --self-contained
-
-# Run standalone binary
-.\bin\Release\net8.0\win-x64\OnlyOfficeConsoleApp.exe input.docx http://localhost:8080
+.\OnlyOfficeConsoleApp\bin\Release\net8.0\OnlyOfficeConsoleApp.exe .\test_files\input_origin_pdf.pdf
 ```
 
 ## Configuration
